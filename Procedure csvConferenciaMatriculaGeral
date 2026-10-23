@@ -1,0 +1,348 @@
+CREATE   PROCEDURE csvConferenciaMatriculaGeral      
+(      
+-- Relatório Interno  
+-- Alteração realizada em: 30/03/2026  
+-- Descrição: Inclusão do campo NOME_SOCIAL no relatório.  
+-- Impacto: Ajuste na procedure quando existir NOME_SOCIAL usá-lo.  
+ @p_unidade VARCHAR(20)     
+, @p_ano INT    
+)      
+AS      
+BEGIN      
+SET NOCOUNT ON;      
+      
+ DECLARE @v_data_atualizacao DATETIME = '2025-10-10 14:30:00.000'      
+ DECLARE @v_dif INT = 60      
+      
+ SELECT      
+  @v_data_atualizacao  = MAX(DATA_ATUALIZACAO)      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL      
+ WHERE UNIDADE_ENS = ISNULL(@p_unidade, UNIDADE_ENS)      
+ AND  ANO = @p_ano      
+      
+ IF DATEDIFF(MINUTE,@v_data_atualizacao,GETDATE()) <= @v_dif      
+ BEGIN      
+  SELECT       
+   [UNIDADE]      
+  , [CODCURSO]      
+  , [CURSO]      
+  , [CODSERIE]      
+  , [SÉRIE]      
+  , [CURRICULO]      
+  , [TURNO]      
+  , [ALUNO]      
+  , [NOME_COMPL]      
+  , [TIPO DO ALUNO]      
+  , [SITUAÇÃO DA MATRÍCULA]      
+  , [CONTRATO]      
+  , [ENTURMAÇÃO]      
+  , [TURMA]      
+  , [1ª PARCELA]      
+  , [MATRÍCULA ANTERIOR]      
+  , [BOLSA 100 ANO ANTERIOR]      
+  , [DÉBITOS ANOS ANTERIORES]      
+  , [MATRICULA CONFIRMADA?]      
+  , [RESPONSÁVEL FINANCEIRO]      
+  , [E-MAIL]      
+  , [TELEFONE 01]      
+  , [TELEFONE 02]      
+  , [CONTRATO ONLINE ACEITO?]      
+  , [DATA ACEITE ONLINE]      
+  , [DT NASC ALUNO]      
+  FROM LY_CUSTOM_CONF_MATRICULA_GERAL      
+  WHERE UNIDADE_ENS = ISNULL(@p_unidade, UNIDADE_ENS)      
+  AND  ANO = @p_ano      
+      
+  RETURN      
+ END      
+      
+ DELETE LY_CUSTOM_CONF_MATRICULA_GERAL      
+ WHERE UNIDADE_ENS = ISNULL(@p_unidade, UNIDADE_ENS)       
+ AND  ANO = @p_ano      
+      
+ -- MATRICULADO      
+ INSERT INTO LY_CUSTOM_CONF_MATRICULA_GERAL      
+    SELECT      
+  [UNIDADE]     = I.UNIDADE_ENS + ' - ' + I.NOME_COMP       
+ , [CODCURSO]     = CUR.CURSO      
+ , [CURSO]      = CUR.NOME      
+ , [CODSERIE]     = S.SERIE      
+ , [SÉRIE]      = S.DESCRICAO      
+ , [CURRICULO]     = GS.CURRICULO      
+ , [TURNO]      = GS.TURNO      
+ , [ALUNO]      = A.ALUNO      
+ , [NOME_COMPL]    = ISNULL(A.NOME_SOCIAL, A.NOME_COMPL)      
+ , [TIPO DO ALUNO]    = CASE WHEN A.ANO_INGRESSO = @p_ano THEN 'NOVATO' ELSE 'VETERANO' END      
+ , [SITUAÇÃO DA MATRÍCULA]  = 'MATRICULADO'      
+ , [CONTRATO]     = CONVERT(VARCHAR(255),NULL)      
+ , [ENTURMAÇÃO]    = 'ENTURMADO'      
+ , [TURMA]      = GS.GRADE      
+ , [1ª PARCELA]    = CONVERT(VARCHAR(255),NULL)      
+ , [MATRÍCULA ANTERIOR]  = CONVERT(VARCHAR(255),'-----')      
+ , [BOLSA 100 ANO ANTERIOR] = CONVERT(VARCHAR(255),NULL)      
+ , [DÉBITOS ANOS ANTERIORES] = CONVERT(VARCHAR(255),'NÃO')      
+ , [MATRICULA CONFIRMADA?]  = CONVERT(VARCHAR(255),NULL)      
+ , [RESPONSÁVEL FINANCEIRO] = CONVERT(VARCHAR(255),NULL)      
+ , [E-MAIL]     = CONVERT(VARCHAR(255),NULL)      
+ , [TELEFONE 01]    = CONVERT(VARCHAR(255),NULL)      
+ , [TELEFONE 02]    = CONVERT(VARCHAR(255),NULL)      
+ , [CONTRATO ONLINE ACEITO?] = CONVERT(VARCHAR(255),NULL)      
+ , [DATA ACEITE ONLINE]  = CONVERT(VARCHAR(255),NULL)      
+ , [DT NASC ALUNO]    = CONVERT(VARCHAR(255),P.DT_NASC,103)      
+      
+ -- DESCARTAR NO RESULTADO      
+ , [ANO_INGRESSO]    = A.ANO_INGRESSO      
+ , [ANO]      = GS.ANO      
+ , [SEMESTRE]     = GS.SEMESTRE      
+ , [SIT_ALUNO]     = A.SIT_ALUNO      
+ , [VALOR_PARC_1]    = (      
+           SELECT TOP 1      
+            V.VALOR      
+           FROM VW_COBRANCA V   
+          JOIN LY_ITEM_LANC IL   
+      ON IL.COBRANCA = V.COBRANCA  
+           WHERE V.ANO = @p_ano      
+           AND  V.ALUNO = A.ALUNO      
+     AND  IL.PARCELA = 1    
+           AND  EXISTS      
+            (      
+             SELECT TOP 1 1      
+             FROM LY_COBRANCA COB WITH (NOLOCK)      
+             JOIN LY_ITEM_LANC IL WITH (NOLOCK)  ON COB.COBRANCA = IL.COBRANCA      
+             WHERE COB.COBRANCA = V.COBRANCA      
+             AND  COB.NUM_COBRANCA = 1      
+             AND  COB.ESTORNO <> 'S'      
+             AND  IL.CODIGO_LANC = 'Mensalidade'      
+            )      
+          )   
+ , [UNIDADE_ENS]    = CUR.FACULDADE      
+ , DATA_ATUALIZACAO   = GETDATE()      
+    FROM LY_ALUNO A      WITH (NOLOCK)      
+    INNER JOIN LY_PESSOA P                 WITH (NOLOCK) ON P.PESSOA = A.PESSOA      
+    INNER JOIN LY_MATGRADE MG              WITH (NOLOCK) ON MG.ALUNO = A.ALUNO      
+    INNER JOIN LY_GRADE_SERIE GS           WITH (NOLOCK) ON MG.GRADE_ID = GS.GRADE_ID      
+    INNER JOIN LY_SERIE S                  WITH (NOLOCK) ON S.CURSO = GS.CURSO AND S.TURNO = GS.TURNO AND S.CURRICULO = GS.CURRICULO AND S.SERIE = GS.SERIE       
+    INNER JOIN LY_CURSO CUR                WITH (NOLOCK) ON S.CURSO = CUR.CURSO      
+    INNER JOIN LY_UNIDADE_ENSINO I         WITH (NOLOCK) ON I.UNIDADE_ENS = CUR.FACULDADE      
+      
+    WHERE       
+        ((I.UNIDADE_ENS = @p_unidade AND @p_unidade IS NOT NULL) OR @p_unidade IS NULL)      
+ AND A.SIT_ALUNO               = 'Ativo'      
+ AND GS.ANO                    = @p_ano      
+ AND GS.SEMESTRE               = 0      
+ AND MG.SIT_MATGRADE           = 'Matriculado'      
+ AND (      
+   (ISNUMERIC(A.CURRICULO) = 1 AND GS.CURRICULO = CONVERT(VARCHAR,@p_ano))      
+   OR      
+   (ISNUMERIC(A.CURRICULO) = 0 AND GS.ANO = @p_ano)      
+  )      
+      
+ -- PRE-MATRICULADO      
+ INSERT INTO LY_CUSTOM_CONF_MATRICULA_GERAL      
+    SELECT      
+  [UNIDADE]     = I.UNIDADE_ENS + ' - ' + I.NOME_COMP       
+ , [CODCURSO]     = CUR.CURSO      
+ , [CURSO]      = CUR.NOME      
+ , [CODSERIE]     = S.SERIE      
+ , [SÉRIE]      = S.DESCRICAO      
+ , [CURRICULO]     = PMG.CURRICULO      
+ , [TURNO]      = PMG.TURNO      
+ , [ALUNO]      = A.ALUNO      
+ , [NOME_COMPL]    = ISNULL(A.NOME_SOCIAL,A.NOME_COMPL)      
+ , [TIPO DO ALUNO]    = CASE WHEN A.ANO_INGRESSO = @p_ano THEN 'NOVATO' ELSE 'VETERANO' END      
+ , [SITUAÇÃO DA MATRÍCULA]  = 'PRÉ-MATRICULADO'      
+ , [CONTRATO]     = CONVERT(VARCHAR(255),NULL)      
+ , [ENTURMAÇÃO]    = 'ENTURMADO'      
+ , [TURMA]      = GS.GRADE      
+ , [1ª PARCELA]    = CONVERT(VARCHAR(255),NULL)      
+ , [MATRÍCULA ANTERIOR]  = CONVERT(VARCHAR(255),'-----')      
+ , [BOLSA 100 ANO ANTERIOR] = CONVERT(VARCHAR(255),NULL)      
+ , [DÉBITOS ANOS ANTERIORES] = CONVERT(VARCHAR(255),'NÃO')      
+ , [MATRICULA CONFIRMADA?]  = CONVERT(VARCHAR(255),NULL)      
+ , [RESPONSÁVEL FINANCEIRO] = CONVERT(VARCHAR(255),NULL)      
+ , [E-MAIL]     = CONVERT(VARCHAR(255),NULL)      
+ , [TELEFONE 01]    = CONVERT(VARCHAR(255),NULL)      
+ , [TELEFONE 02]    = CONVERT(VARCHAR(255),NULL)      
+ , [CONTRATO ONLINE ACEITO?] = CONVERT(VARCHAR(255),NULL)      
+ , [DATA ACEITE ONLINE]  = CONVERT(VARCHAR(255),NULL)      
+ , [DT NASC ALUNO]    = CONVERT(VARCHAR(255),P.DT_NASC,103)      
+      
+ -- DESCARTAR NO RESULTADO      
+ , [ANO_INGRESSO]    = A.ANO_INGRESSO      
+ , [ANO]      = PMG.ANO      
+ , [SEMESTRE]     = PMG.PERIODO      
+ , [SIT_ALUNO]     = A.SIT_ALUNO      
+ , [VALOR_PARC_1]    = (      
+           SELECT TOP 1      
+            V.VALOR      
+           FROM VW_COBRANCA V   
+          JOIN LY_ITEM_LANC IL   
+      ON IL.COBRANCA = V.COBRANCA  
+           WHERE V.ANO = @p_ano      
+           AND  V.ALUNO = A.ALUNO      
+     AND  IL.PARCELA = 1  
+           AND  EXISTS      
+            (      
+             SELECT TOP 1 1      
+             FROM LY_COBRANCA COB WITH (NOLOCK)      
+             JOIN LY_ITEM_LANC IL WITH (NOLOCK)  ON COB.COBRANCA = IL.COBRANCA      
+             WHERE COB.COBRANCA = V.COBRANCA      
+             AND  COB.NUM_COBRANCA = 1      
+             AND  COB.ESTORNO <> 'S'      
+             AND  IL.CODIGO_LANC = 'Mensalidade'      
+            )      
+          )      
+ , [UNIDADE_ENS]    = CUR.FACULDADE      
+ , DATA_ATUALIZACAO   = GETDATE()      
+    FROM LY_ALUNO A      WITH (NOLOCK)      
+    INNER JOIN LY_PESSOA P                 WITH (NOLOCK) ON P.PESSOA = A.PESSOA      
+ INNER JOIN LY_PREMATGRADE PMG   WITH (NOLOCK) ON PMG.ALUNO = A.ALUNO          
+ LEFT JOIN LY_GRADE_SERIE GS    WITH (NOLOCK) ON PMG.GRADE_ID = GS.GRADE_ID      
+ INNER JOIN LY_SERIE S     WITH (NOLOCK) ON S.SERIE = PMG.SERIE AND S.TURNO = PMG.TURNO AND S.CURSO = PMG.CURSO AND S.CURRICULO = PMG.CURRICULO         
+    INNER JOIN LY_CURSO CUR                WITH (NOLOCK) ON S.CURSO = CUR.CURSO      
+    INNER JOIN LY_UNIDADE_ENSINO I         WITH (NOLOCK) ON I.UNIDADE_ENS = CUR.FACULDADE      
+      
+    WHERE      
+        ((I.UNIDADE_ENS = @p_unidade AND @p_unidade IS NOT NULL) OR @p_unidade IS NULL)      
+ AND A.SIT_ALUNO               = 'Ativo'      
+ AND PMG.ANO                   = @p_ano      
+ AND PMG.PERIODO               = 0      
+ AND (      
+   (ISNUMERIC(PMG.CURRICULO) = 1 AND PMG.CURRICULO = CONVERT(VARCHAR,@p_ano))      
+   OR      
+   (ISNUMERIC(PMG.CURRICULO) = 0 AND PMG.ANO = @p_ano)      
+  )      
+      
+ UPDATE A      
+ SET  CONTRATO  = CASE WHEN DOC.ALUNO IS NOT NULL THEN 'ENTREGUE' ELSE 'NÃO ENTREGUE' END      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ LEFT JOIN LY_MATRICULA_DOCALU DOC WITH (NOLOCK)  ON DOC.ALUNO = A.ALUNO AND DOC.ANO = A.ANO AND DOC.PERIODO = A.SEMESTRE      
+ WHERE A.UNIDADE_ENS = @p_unidade      
+ AND  A.ANO = @p_ano       
+         
+ UPDATE A      
+ SET  [MATRÍCULA ANTERIOR]  = (                                  
+           SELECT TOP 1       
+            CASE WHEN QHMG.SIT_MATGRADE IN ('Aprovado','Reprovado') THEN 'CONCLUÍDA' END         
+           FROM LY_HIST_MATGRADE QHMG WITH (NOLOCK)      
+           JOIN LY_GRADE_SERIE QGS WITH (NOLOCK)  ON QHMG.GRADE_ID = QGS.GRADE_ID                                  
+           WHERE                                   
+            A.ALUNO = QHMG.ALUNO                                   
+           AND QGS.ANO = @p_ano - 1                          
+           AND QGS.SEMESTRE = '0'                                  
+           AND QHMG.SIT_MATGRADE IN ('Aprovado','Reprovado')                                  
+           AND A.SIT_ALUNO = 'Ativo'                                  
+           AND QGS.ANO = @p_ano -1                                  
+           )      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ WHERE A.UNIDADE_ENS = @p_unidade      
+ AND  A.ANO = @p_ano      
+       
+ UPDATE A      
+ SET  [BOLSA 100 ANO ANTERIOR] = ISNULL((                                  
+           SELECT TOP 1       
+            TIPO_BOLSA                                   
+           FROM  LY_BOLSA QB WITH (NOLOCK)                                
+           WHERE                                   
+            QB.ALUNO = A.ALUNO      
+           AND QB.ANOFIM = @p_ano - 1       
+           AND QB.MESFIM = 12       
+           AND QB.VALOR = 1                                  
+          ),'-----')      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ WHERE A.UNIDADE_ENS = @p_unidade      
+ AND  A.ANO = @p_ano       
+      
+ -- DEBITOS DE MENSALIDADE OU ACORDO EM ANOS ANTERIORES                                  
+    UPDATE A      
+ SET  [DÉBITOS ANOS ANTERIORES] = 'SIM'      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ JOIN VW_COBRANCA VW  WITH (NOLOCK)           ON VW.ALUNO = A.ALUNO      
+ WHERE VW.ANO < YEAR(GETDATE())                                  
+ AND  VW.VALOR > 0                                  
+ AND  VW.ESTORNO <> 'S'                 
+ AND  VW.DATA_DE_FATURAMENTO IS NOT NULL      
+ AND  EXISTS      
+  (      
+   SELECT TOP 1 1      
+   FROM LY_ITEM_LANC IC WITH (NOLOCK)      
+   WHERE VW.COBRANCA = IC.COBRANCA      
+   AND  IC.CODIGO_LANC IN ('Mensalidade','ACORDO')      
+  )      
+ AND  A.UNIDADE_ENS = @p_unidade      
+ AND  A.ANO = @p_ano      
+      
+ UPDATE A      
+ SET  [MATRICULA CONFIRMADA?]  = CASE       
+            WHEN A.CONTRATO = 'ENTREGUE'       
+            AND ( CASE       
+               WHEN A.VALOR_PARC_1 <= 0 THEN 'BAIXADA'       
+               WHEN A.VALOR_PARC_1 > 0 THEN 'EM ABERTO'       
+               ELSE 'NÃO GERADA'       
+              END      
+             ) = 'BAIXADA' THEN 'SIM'       
+            ELSE 'NÃO'                                   
+           END                
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ WHERE A.UNIDADE_ENS = @p_unidade      
+ AND  A.ANO = @p_ano      
+       
+ ---- DADOS DO RESPONSÁVEL      
+ UPDATE A      
+ SET      
+  [RESPONSÁVEL FINANCEIRO]  = RESP.RESP_FIN                                  
+ , [E-MAIL]      = RESP.E_MAIL                                  
+ , [TELEFONE 01]     = RESP.TELEFONE_1      
+ , [TELEFONE 02]     = RESP.TELEFONE_2      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ LEFT JOIN       
+  (      
+   SELECT       
+    PPP.ALUNO                                
+   , [RESP_FIN]  = PRF.NOME_COMPL                                
+   , [E_MAIL]  = ISNULL (REPLACE(RF.E_MAIL,';',' - '), REPLACE(PRF.E_MAIL,';',' - '))                                 
+   , [TELEFONE_1] = CAST(PRF.DDD_FONE_CELULAR +''+ PRF.CELULAR AS VARCHAR(50))                                  
+   , [TELEFONE_2] = CAST(PRF.DDD_FONE + '' + PRF.FONE AS VARCHAR(50))                                  
+   FROM LY_PLANO_PGTO_PERIODO PPP WITH (NOLOCK)                                 
+   LEFT JOIN  LY_RESP_FINAN RF WITH (NOLOCK) ON RF.RESP = PPP.RESP                        
+   LEFT JOIN  LY_PESSOA PRF WITH (NOLOCK)  ON PRF.PESSOA = RF.PESSOA                                  
+   WHERE ANO = @p_ano                                
+   AND PPP.RESP =  (                                
+        SELECT TOP 1       
+         RESP                                
+        FROM LY_PLANO_PGTO_PERIODO WITH (NOLOCK)                                 
+        WHERE ALUNO = PPP.ALUNO                                
+        AND ANO = PPP.ANO                                
+        ORDER BY PERCENT_DIVIDA_ALUNO DESC                                
+       )                                
+  ) RESP    ON A.ALUNO = RESP.ALUNO      
+ WHERE UNIDADE_ENS = ISNULL(@p_unidade, UNIDADE_ENS)      
+ AND  A.ANO = @p_ano        
+       
+ -- PARCELA      
+ UPDATE A      
+ SET  [1ª PARCELA]    = CASE               
+            WHEN A.VALOR_PARC_1 <= 0 THEN 'BAIXADA'                
+            WHEN A.VALOR_PARC_1 > 0  THEN 'EM ABERTO'               
+            ELSE 'NÃO GERADA'       
+           END      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ WHERE A.UNIDADE_ENS = ISNULL(@p_unidade, A.UNIDADE_ENS)      
+ AND  A.ANO = @p_ano      
+      
+ UPDATE  A      
+ SET  [CONTRATO ONLINE ACEITO?]  = CASE WHEN CT.CONTRATO_ACEITO = 'S' THEN 'SIM' ELSE 'NÃO' END                                  
+  , [DATA ACEITE ONLINE]   = ISNULL(CONVERT(CHAR, CT.DATA_ACEITE, 103),'-----')      
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL A      
+ LEFT JOIN LY_CONTRATO_ALUNO CT WITH(NOLOCK) ON A.ALUNO = CT.ALUNO AND CT.ANO = @p_ano AND CT.PERIODO = 0      
+ WHERE A.UNIDADE_ENS = ISNULL(@p_unidade, A.UNIDADE_ENS)      
+ AND  A.ANO = @p_ano      
+       
+ -- RESULTADO      
+ SELECT *       
+ FROM LY_CUSTOM_CONF_MATRICULA_GERAL      
+ WHERE UNIDADE_ENS = ISNULL(@p_unidade, UNIDADE_ENS)      
+ AND  ANO = @p_ano      
+      
+SET NOCOUNT OFF;      
+END;   
